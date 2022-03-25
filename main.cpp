@@ -56,7 +56,7 @@ void trim(dataQueue &dq, int limit){
     }
 }
 
-void SearchLayer(Data q, vector<int> indptr, vector<int> index, vector<int> level_offset, int currLevel, unordered_set<int> &visited, vector<Data> vect, dataQueue &candidates){
+void SearchLayer(Data q, vector<uint32_t> indptr, vector<int32_t> index, vector<uint32_t> level_offset, int currLevel, unordered_set<int> &visited, vector<Data> vect, dataQueue &candidates){
     dataQueue *newCandidates = new dataQueue(candidates);
     int k = candidates.size();
     while(newCandidates->size() > 0){
@@ -79,7 +79,7 @@ void SearchLayer(Data q, vector<int> indptr, vector<int> index, vector<int> leve
     }
 }
 
-dataQueue queryHNSW(Data q, int top_k, int ep, vector<int> indptr, vector<int> index, vector<int> level_offset, int max_level, vector<Data> vect){
+dataQueue queryHNSW(Data q, int top_k, int ep, vector<uint32_t> indptr, vector<int32_t> index, vector<uint32_t> level_offset, int max_level, vector<Data> vect){
     dataQueue candidates;
     candidates.push(make_pair(ep, cosine_dist(q, vect[ep])));
     unordered_set<int> visited;
@@ -90,6 +90,92 @@ dataQueue queryHNSW(Data q, int top_k, int ep, vector<int> indptr, vector<int> i
     return candidates;
 }
 
-int main(){
+ifstream open_file(string filename){
+    ifstream file;
+    file.open(filename, ios::binary);
+    if(!file.is_open()){
+        cout << "Could not open file" << endl;
+        exit(1);
+    }
+    return file;
+}
 
+template <typename T, size_t S>
+void read_val(T &n, ifstream &file) {
+    memset(&n, 0, sizeof(n));
+    unsigned char buffer[S];
+    file.read((char *)buffer, S);
+    for (size_t i = 0; i < S; i++) {
+        n = (n << 8) | buffer[i];
+    }
+}
+
+int main(int argc, char *argv[]){
+    assert(argc == 5);
+
+    string data_dir = argv[1];
+    int top_k = stoi(argv[2]);
+    string user = argv[3];
+    string out_file = argv[4];
+
+    ifstream params_file = open_file(data_dir + "/params");
+    uint32_t ep, max_level, l, d;
+    read_val<uint32_t, 4>(ep, params_file);
+    read_val<uint32_t, 4>(max_level, params_file);
+    read_val<uint32_t, 4>(l, params_file);
+    read_val<uint32_t, 4>(d, params_file);
+
+    ifstream indptr_file = open_file(data_dir + "/indptr");
+    vector<uint32_t> indptr;
+    for(int i=0;i<l+1;i++){
+        uint32_t curr;
+        read_val<uint32_t, 4>(curr, indptr_file);
+        indptr.push_back(curr);
+    }
+
+    ifstream index_file = open_file(data_dir + "/index");
+    vector<int32_t> index;
+    while (index_file.peek() != EOF) {
+        int32_t n;
+        read_val<int32_t, 4>(n, index_file);
+        index.push_back(n);
+    }
+
+    ifstream level_offset_file = open_file(data_dir + "/level_offset");
+    vector<uint32_t> level_offset;
+    while (level_offset_file.peek() != EOF) {
+        uint32_t n;
+        read_val<uint32_t, 4>(n, level_offset_file);
+        level_offset.push_back(n);
+    }
+
+    ifstream vect_file = open_file(data_dir + "/vect");
+    vector<Data> vect;
+    while (vect_file.peek() != EOF) {
+        vector<double> items;
+        for (int i = 0; i < d; i++) {
+            double dbl;
+            read_val<double, 8>(dbl, vect_file);
+            items.push_back(dbl);
+        }
+        vect.push_back(Data(d, items));
+    }
+
+    ifstream user_file(user);
+    if (!user_file.is_open()) {
+        cout << "Could not open file" << endl;
+        exit(1);
+    }
+    vector<Data> users;
+    while (user_file.peek() != EOF) {
+        vector<double> items;
+        for (int i = 0; i < d; i++) {
+            double dbl;
+            user_file >> dbl;
+            items.push_back(dbl);
+        }
+        users.push_back(Data(d, items));
+    }
+
+    queryHNSW(users[0], top_k, ep, indptr, index, level_offset, max_level, vect);
 }
