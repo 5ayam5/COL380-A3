@@ -1,42 +1,28 @@
 #include<bits/stdc++.h>
 using namespace std;
 
-struct Data{
-    int numItems;
-    vector<double> dataItems;
+using q_elem = pair<int, double>;
 
-    Data(int num, vector<double> items){
-        this->numItems = num;
-        for(int i=0;i<num;i++){
-            this->dataItems.push_back(items[num]);
-        }
-    } 
-};
-
-class Compare{
-public:
-    bool operator() (q_elem a, q_elem b){
-        if(a.second <= b.second){
+struct Compare{
+    bool operator() (q_elem const a, q_elem const b) {
+        if(a.second < b.second) {
             return true;
-        }else if(a.second == b.second){
-            return a.first <= b.first;
-        }else{
-            return false;
         }
+        return (a.second == b.second) && a.first < b.first;
     }
 };
 
-typedef pair<int, double> q_elem;
-typedef priority_queue<q_elem, vector<q_elem>, Compare> dataQueue;
+using dataQueue = priority_queue<q_elem, vector<q_elem>, Compare>;
 
-double cosine_dist(Data a, Data b){
-    assert(a.numItems == b.numItems);
+double cosine_dist(vector<double> a, vector<double> b){
+    assert(a.size() == b.size());
+    int n = a.size();
     double dotProd = 0.0;
     double lenA = 0.0;
     double lenB = 0.0;
-    for(int i=0;i<a.numItems;i++){
-        double ad = a.dataItems[i];
-        double bd = b.dataItems[i];
+    for(int i = 0; i < n; i++) {
+        double ad = a[i];
+        double bd = b[i];
         dotProd += (ad * bd);
         lenA += (ad * ad);
         lenB += (bd * bd);
@@ -46,46 +32,51 @@ double cosine_dist(Data a, Data b){
 }
 
 void trim(dataQueue &dq, int limit){
-    vector<q_elem> v;
-    while(dq.size()>0){
-        v.push_back(dq.top());
+    while (dq.size() > limit)
         dq.pop();
-    }
-    for(int i=0;i<limit;i++){
-        dq.push(v[i]);
-    }
 }
 
-void SearchLayer(Data q, vector<uint32_t> indptr, vector<int32_t> index, vector<uint32_t> level_offset, int currLevel, unordered_set<int> &visited, vector<Data> vect, dataQueue &candidates){
-    dataQueue *newCandidates = new dataQueue(candidates);
-    int k = candidates.size();
-    while(newCandidates->size() > 0){
-        int curr = newCandidates->top().first;
-        newCandidates->pop();
+dataQueue maxToMinOrViceVersaHeap(dataQueue dq) {
+    vector<q_elem> v;
+    dataQueue newDq;
+    while (!dq.empty()) {
+        q_elem top = dq.top();
+        newDq.push({-top.first, -top.second});
+        dq.pop();
+    }
+    return newDq;
+}
+
+void SearchLayer(vector<double> q, int k, vector<uint32_t> indptr, vector<int32_t> index, vector<uint32_t> level_offset, int currLevel, unordered_set<int> &visited, vector<vector<double>> vect, dataQueue &candidates) {
+    dataQueue newCandidates = maxToMinOrViceVersaHeap(candidates);
+    while(newCandidates.size() > 0) {
+        int curr = -newCandidates.top().first;
+        newCandidates.pop();
         int start = indptr[curr] + level_offset[currLevel];
         int end = indptr[curr] + level_offset[currLevel + 1];
         for(int i = start;i<end;i++){
             int currIdx = index[i];
-            if(visited.find(currIdx) == visited.end() || currIdx == -1){
+            if(visited.count(currIdx) || currIdx == -1) {
                 continue;
             }
             visited.insert(currIdx);
             double currDist = cosine_dist(q, vect[currIdx]);
-            //Do distance check
+            if (currDist > candidates.top().second)
+                continue;
             candidates.push(make_pair(currIdx, currDist));
-            trim(candidates,k);
-            newCandidates->push(make_pair(currIdx,currDist));
+            trim(candidates, k);
+            newCandidates.push(make_pair(-currIdx, -currDist));
         }
     }
 }
 
-dataQueue queryHNSW(Data q, int top_k, int ep, vector<uint32_t> indptr, vector<int32_t> index, vector<uint32_t> level_offset, int max_level, vector<Data> vect){
+dataQueue queryHNSW(vector<double> q, int top_k, int ep, vector<uint32_t> indptr, vector<int32_t> index, vector<uint32_t> level_offset, int max_level, vector<vector<double>> vect){
     dataQueue candidates;
     candidates.push(make_pair(ep, cosine_dist(q, vect[ep])));
     unordered_set<int> visited;
     visited.insert(ep);
-    for(int i = max_level - 1;i>=0;i--){
-        SearchLayer(q, indptr, index, level_offset, i, visited, vect, candidates);
+    for(int i = max_level;i>=0;i--) {
+        SearchLayer(q, top_k, indptr, index, level_offset, i, visited, vect, candidates);
     } 
     return candidates;
 }
@@ -101,13 +92,10 @@ ifstream open_file(string filename){
 }
 
 template <typename T, size_t S>
-void read_val(T &n, ifstream &file) {
-    memset(&n, 0, sizeof(n));
+void read_val(T *n, ifstream &file) {
     unsigned char buffer[S];
     file.read((char *)buffer, S);
-    for (size_t i = 0; i < S; i++) {
-        n = (n << 8) | buffer[i];
-    }
+    *n = *(T *)buffer;
 }
 
 int main(int argc, char *argv[]){
@@ -120,45 +108,49 @@ int main(int argc, char *argv[]){
 
     ifstream params_file = open_file(data_dir + "/params");
     uint32_t ep, max_level, l, d;
-    read_val<uint32_t, 4>(ep, params_file);
-    read_val<uint32_t, 4>(max_level, params_file);
-    read_val<uint32_t, 4>(l, params_file);
-    read_val<uint32_t, 4>(d, params_file);
+    read_val<uint32_t, 4>(&ep, params_file);
+    read_val<uint32_t, 4>(&max_level, params_file);
+    read_val<uint32_t, 4>(&l, params_file);
+    read_val<uint32_t, 4>(&d, params_file);
+    cout << "ep: " << ep << ' ' << "max_level: " << max_level << ' ' << "l: " << l << ' ' << "d: " << d << endl;
 
     ifstream indptr_file = open_file(data_dir + "/indptr");
     vector<uint32_t> indptr;
-    for(int i=0;i<l+1;i++){
+    while (indptr_file.peek() != EOF) {
         uint32_t curr;
-        read_val<uint32_t, 4>(curr, indptr_file);
+        read_val<uint32_t, 4>(&curr, indptr_file);
         indptr.push_back(curr);
     }
+    cout << "indptr read" << endl;
 
     ifstream index_file = open_file(data_dir + "/index");
     vector<int32_t> index;
     while (index_file.peek() != EOF) {
-        int32_t n;
-        read_val<int32_t, 4>(n, index_file);
-        index.push_back(n);
+        int32_t curr;
+        read_val<int32_t, 4>(&curr, index_file);
+        index.push_back(curr);
     }
+    cout << "index read" << endl;
 
     ifstream level_offset_file = open_file(data_dir + "/level_offset");
     vector<uint32_t> level_offset;
     while (level_offset_file.peek() != EOF) {
         uint32_t n;
-        read_val<uint32_t, 4>(n, level_offset_file);
+        read_val<uint32_t, 4>(&n, level_offset_file);
         level_offset.push_back(n);
     }
+    cout << "level_offset read" << endl;
 
     ifstream vect_file = open_file(data_dir + "/vect");
-    vector<Data> vect;
+    vector<vector<double>> vect;
     while (vect_file.peek() != EOF) {
         vector<double> items;
         for (int i = 0; i < d; i++) {
             double dbl;
-            read_val<double, 8>(dbl, vect_file);
+            read_val<double, 8>(&dbl, vect_file);
             items.push_back(dbl);
         }
-        vect.push_back(Data(d, items));
+        vect.push_back(items);
     }
 
     ifstream user_file(user);
@@ -166,7 +158,7 @@ int main(int argc, char *argv[]){
         cout << "Could not open file" << endl;
         exit(1);
     }
-    vector<Data> users;
+    vector<vector<double>> users;
     while (user_file.peek() != EOF) {
         vector<double> items;
         for (int i = 0; i < d; i++) {
@@ -174,8 +166,13 @@ int main(int argc, char *argv[]){
             user_file >> dbl;
             items.push_back(dbl);
         }
-        users.push_back(Data(d, items));
+        users.push_back(items);
     }
 
-    queryHNSW(users[0], top_k, ep, indptr, index, level_offset, max_level, vect);
+    dataQueue candidates = queryHNSW(users[0], top_k, ep, indptr, index, level_offset, max_level, vect);
+
+    while (!candidates.empty()) {
+        cout << candidates.top().first << ' ' << candidates.top().second << endl;
+        candidates.pop();
+    }
 }

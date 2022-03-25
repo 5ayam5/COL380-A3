@@ -30,7 +30,7 @@ if __name__ == "__main__":
   with open(path.join(out_dir, "vect"), "w+b") as vect:
     with open(path.join(in_dir, "vect.txt"), "r") as inf:
       lines = inf.readlines()
-      d = int(len(lines[0]))
+      d = int(len(lines[0].split()))
       param_file.write(d.to_bytes(4, 'little'))
       for line in lines:
         vect.writelines(list(map(lambda x: pack("<d", float(x)), line.split())))
