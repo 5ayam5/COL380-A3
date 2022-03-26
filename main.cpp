@@ -3,7 +3,7 @@
 #include <omp.h>
 using namespace std;
 
-using q_elem = pair<int, double>;
+using q_elem = pair<int, float>;
 
 struct Compare{
     bool operator() (q_elem const a, q_elem const b) {
@@ -16,14 +16,14 @@ struct Compare{
 
 using dataQueue = priority_queue<q_elem, vector<q_elem>, Compare>;
 
-double cosine_dist(vector<double> a, double *b){
+float cosine_dist(vector<float> a, float *b){
     int n = a.size();
-    double dotProd = 0.0;
-    double lenA = 0.0;
-    double lenB = 0.0;
+    float dotProd = 0.0;
+    float lenA = 0.0;
+    float lenB = 0.0;
     for(int i = 0; i < n; i++) {
-        double ad = a[i];
-        double bd = b[i];
+        float ad = a[i];
+        float bd = b[i];
         dotProd += (ad * bd);
         lenA += (ad * ad);
         lenB += (bd * bd);
@@ -48,10 +48,10 @@ dataQueue maxToMinOrViceVersaHeap(dataQueue dq) {
     return newDq;
 }
 
-double **vect;
-vector<vector<double>> users;
+float **vect;
+vector<vector<float>> users;
 
-void SearchLayer(vector<double> q, int k, vector<uint32_t> indptr, vector<int32_t> index, vector<uint32_t> level_offset, int currLevel, unordered_set<int> &visited, dataQueue &candidates) {
+void SearchLayer(vector<float> q, int k, vector<uint32_t> indptr, vector<int32_t> index, vector<uint32_t> level_offset, int currLevel, unordered_set<int> &visited, dataQueue &candidates) {
     dataQueue newCandidates = maxToMinOrViceVersaHeap(candidates);
     while(newCandidates.size() > 0) {
         int curr = -newCandidates.top().first;
@@ -64,7 +64,7 @@ void SearchLayer(vector<double> q, int k, vector<uint32_t> indptr, vector<int32_
                 continue;
             }
             visited.insert(currIdx);
-            double currDist = cosine_dist(q, vect[currIdx]);
+            float currDist = cosine_dist(q, vect[currIdx]);
             candidates.push(make_pair(currIdx, currDist));
             trim(candidates, k);
             newCandidates.push(make_pair(-currIdx, -currDist));
@@ -72,7 +72,7 @@ void SearchLayer(vector<double> q, int k, vector<uint32_t> indptr, vector<int32_
     }
 }
 
-dataQueue queryHNSW(vector<double> q, int top_k, int ep, vector<uint32_t> indptr, vector<int32_t> index, vector<uint32_t> level_offset, int max_level){
+dataQueue queryHNSW(vector<float> q, int top_k, int ep, vector<uint32_t> indptr, vector<int32_t> index, vector<uint32_t> level_offset, int max_level){
     dataQueue candidates;
     candidates.push(make_pair(ep, cosine_dist(q, vect[ep])));
     unordered_set<int> visited;
@@ -153,13 +153,13 @@ int main(int argc, char *argv[]){
     cout << "level_offset read" << endl;
 
     ifstream vect_file = open_file(data_dir + "/vect");
-    vect = new double*[l];
+    vect = new float*[l];
     for(int i = 0; i < l; i++) {
-        vect[i] = new double[d];
+        vect[i] = new float[d];
     }
     for (int j = 0; j < l; j++) {
         for (int i = 0; i < d; i++) {
-            read_val<double, 8>(&vect[j][i], vect_file);
+            read_val<float, 4>(&vect[j][i], vect_file);
         }
     }
     vect_file.close();
@@ -171,12 +171,12 @@ int main(int argc, char *argv[]){
         exit(1);
     }
     while (user_file.peek() != EOF) {
-        vector<double> items;
+        vector<float> items;
         for (int i = 0; i < d; i++) {
             if (user_file.peek() == EOF) {
                 break;
             }
-            double dbl;
+            float dbl;
             user_file >> dbl;
             items.push_back(dbl);
         }

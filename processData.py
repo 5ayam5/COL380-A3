@@ -33,4 +33,4 @@ if __name__ == "__main__":
       d = int(len(lines[0].split()))
       param_file.write(d.to_bytes(4, 'little'))
       for line in lines:
-        vect.writelines(list(map(lambda x: pack("<d", float(x)), line.split())))
+        vect.writelines(list(map(lambda x: pack("<f", float(x)), line.split())))
