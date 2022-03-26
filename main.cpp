@@ -1,4 +1,5 @@
 #include<bits/stdc++.h>
+#include<mpi.h>
 using namespace std;
 
 using q_elem = pair<int, double>;
@@ -77,7 +78,7 @@ dataQueue queryHNSW(vector<double> q, int top_k, int ep, vector<uint32_t> indptr
     visited.insert(ep);
     for(int i = max_level;i>=0;i--) {
         SearchLayer(q, top_k, indptr, index, level_offset, i, visited, vect, candidates);
-    } 
+    }
     return candidates;
 }
 
@@ -105,6 +106,11 @@ int main(int argc, char *argv[]){
     int top_k = stoi(argv[2]);
     string user = argv[3];
     string out_file = argv[4];
+
+    int rank, size; 
+    MPI_Init(NULL,NULL);
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &size);
 
     ifstream params_file = open_file(data_dir + "/params");
     uint32_t ep, max_level, l, d;
@@ -169,10 +175,39 @@ int main(int argc, char *argv[]){
         users.push_back(items);
     }
 
-    dataQueue candidates = queryHNSW(users[0], top_k, ep, indptr, index, level_offset, max_level, vect);
-
-    while (!candidates.empty()) {
-        cout << candidates.top().first << ' ' << candidates.top().second << endl;
-        candidates.pop();
+    int num_users = users.size();
+    int user_start_indices[size + 1], user_sizes[size];
+    int num_users_per_process = (num_users + size - 1)/size;
+    for (int node = 0; node < size; node++) {
+        user_start_indices[node] = node * num_users_per_process * sizeof(q_elem) * top_k;
     }
+    user_start_indices[size] = num_users * sizeof(q_elem) * top_k;
+    for (int node = 0; node < size; node++) {
+        user_sizes[node] = (user_start_indices[node + 1] - user_start_indices[node]);
+    }
+    q_elem output[num_users][top_k];
+    for (int i=user_start_indices[rank] / (sizeof(q_elem) * top_k); i < user_start_indices[rank + 1] / (sizeof(q_elem) * top_k); i++) {
+        dataQueue candidates = queryHNSW(users[i], top_k, ep, indptr, index, level_offset, max_level, vect);
+        int j = 0;
+        while (!candidates.empty()) {
+            output[i][j++] = make_pair(candidates.top().first,candidates.top().second);
+            candidates.pop();
+        }
+        while (j < top_k)
+            output[i][j++] = make_pair(-1, -1);
+    }
+    MPI_Gatherv(output[user_start_indices[rank] / (sizeof(q_elem) * top_k)], user_sizes[rank], MPI_BYTE, output, user_sizes, user_start_indices, MPI_BYTE, 0, MPI_COMM_WORLD);
+
+    MPI_Finalize();
+
+    if(rank==0){
+        for(int i=0;i<users.size();i++){
+            cout << "User " << i << ":\n";
+            for(int j=0;j<top_k;j++){
+                cout << output[i][j].first << " " << output[i][j].second << "\n";
+            }
+        }
+    }
+    
+    return 0;
 }
