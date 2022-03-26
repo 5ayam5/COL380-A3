@@ -1,5 +1,6 @@
-#include<bits/stdc++.h>
-#include<mpi.h>
+#include <bits/stdc++.h>
+#include <mpi.h>
+#include <omp.h>
 using namespace std;
 
 using q_elem = pair<int, double>;
@@ -62,8 +63,6 @@ void SearchLayer(vector<double> q, int k, vector<uint32_t> indptr, vector<int32_
             }
             visited.insert(currIdx);
             double currDist = cosine_dist(q, vect[currIdx]);
-            if (currDist > candidates.top().second)
-                continue;
             candidates.push(make_pair(currIdx, currDist));
             trim(candidates, k);
             newCandidates.push(make_pair(-currIdx, -currDist));
@@ -118,6 +117,7 @@ int main(int argc, char *argv[]){
     read_val<uint32_t, 4>(&max_level, params_file);
     read_val<uint32_t, 4>(&l, params_file);
     read_val<uint32_t, 4>(&d, params_file);
+    params_file.close();
     cout << "ep: " << ep << ' ' << "max_level: " << max_level << ' ' << "l: " << l << ' ' << "d: " << d << endl;
 
     ifstream indptr_file = open_file(data_dir + "/indptr");
@@ -127,6 +127,7 @@ int main(int argc, char *argv[]){
         read_val<uint32_t, 4>(&curr, indptr_file);
         indptr.push_back(curr);
     }
+    indptr_file.close();
     cout << "indptr read" << endl;
 
     ifstream index_file = open_file(data_dir + "/index");
@@ -136,6 +137,7 @@ int main(int argc, char *argv[]){
         read_val<int32_t, 4>(&curr, index_file);
         index.push_back(curr);
     }
+    index_file.close();
     cout << "index read" << endl;
 
     ifstream level_offset_file = open_file(data_dir + "/level_offset");
@@ -145,6 +147,7 @@ int main(int argc, char *argv[]){
         read_val<uint32_t, 4>(&n, level_offset_file);
         level_offset.push_back(n);
     }
+    level_offset_file.close();
     cout << "level_offset read" << endl;
 
     ifstream vect_file = open_file(data_dir + "/vect");
@@ -158,6 +161,8 @@ int main(int argc, char *argv[]){
         }
         vect.push_back(items);
     }
+    vect_file.close();
+    cout << "vect read" << endl;
 
     ifstream user_file(user);
     if (!user_file.is_open()) {
@@ -174,40 +179,71 @@ int main(int argc, char *argv[]){
         }
         users.push_back(items);
     }
+    user_file.close();
+    cout << "users read" << endl;
+
+    int num_threads[size];
+    int user_start_indices[size + 1], user_sizes[size];
+    num_threads[rank] = omp_get_max_threads();
+    MPI_Allgather(&num_threads[rank], 1, MPI_INT, num_threads, 1, MPI_INT, MPI_COMM_WORLD);
+
+    int num_threads_total = 0;
+    for(int i = 0;i<size;i++){
+        num_threads_total += num_threads[i];
+    }
 
     int num_users = users.size();
-    int user_start_indices[size + 1], user_sizes[size];
-    int num_users_per_process = (num_users + size - 1)/size;
+    int num_blocks = num_users / num_threads_total;
+    int remaining = num_users % num_threads_total;
     for (int node = 0; node < size; node++) {
-        user_start_indices[node] = node * num_users_per_process * sizeof(q_elem) * top_k;
+        user_sizes[node] = num_blocks * num_threads[node];
+        int extra = (remaining + size - 1) / size;
+        if(node == size - 1){
+            user_sizes[node] += (remaining - extra * (size - 1));
+        }else{
+            user_sizes[node] += extra; 
+        }
+        user_sizes[node] *= sizeof(q_elem) * top_k;
     }
-    user_start_indices[size] = num_users * sizeof(q_elem) * top_k;
-    for (int node = 0; node < size; node++) {
-        user_sizes[node] = (user_start_indices[node + 1] - user_start_indices[node]);
+
+    user_start_indices[0] = 0;
+    for (int node = 1; node <= size; node++) {
+        user_start_indices[node] = user_start_indices[node-1] + user_sizes[node-1];
     }
     q_elem output[num_users][top_k];
-    for (int i=user_start_indices[rank] / (sizeof(q_elem) * top_k); i < user_start_indices[rank + 1] / (sizeof(q_elem) * top_k); i++) {
-        dataQueue candidates = queryHNSW(users[i], top_k, ep, indptr, index, level_offset, max_level, vect);
-        int j = 0;
-        while (!candidates.empty()) {
-            output[i][j++] = make_pair(candidates.top().first,candidates.top().second);
-            candidates.pop();
+
+    int startNode = user_start_indices[rank] / (sizeof(q_elem) * top_k);
+    int endNode = user_start_indices[rank+1] / (sizeof(q_elem) * top_k);
+    #pragma omp parallel for
+        for (int i=startNode; i < endNode; i++) {
+            dataQueue candidates = queryHNSW(users[i], top_k, ep, indptr, index, level_offset, max_level, vect);
+            int j = 0;
+            while (!candidates.empty()) {
+                output[i][j++] = make_pair(candidates.top().first,candidates.top().second);
+                candidates.pop();
+            }
+            reverse(output[i], output[i] + j);
+            while (j < top_k)
+                output[i][j++] = make_pair(-1, -1);
         }
-        while (j < top_k)
-            output[i][j++] = make_pair(-1, -1);
-    }
+
     MPI_Gatherv(output[user_start_indices[rank] / (sizeof(q_elem) * top_k)], user_sizes[rank], MPI_BYTE, output, user_sizes, user_start_indices, MPI_BYTE, 0, MPI_COMM_WORLD);
 
-    MPI_Finalize();
 
-    if(rank==0){
+    if(rank == 0) {
+        ofstream out(out_file);
         for(int i=0;i<users.size();i++){
-            cout << "User " << i << ":\n";
             for(int j=0;j<top_k;j++){
-                cout << output[i][j].first << " " << output[i][j].second << "\n";
+                if (output[i][j].first == -1)
+                    break;
+                out << output[i][j].first << " ";
             }
+            out << '\n';
         }
+        out.close();
     }
+
+    MPI_Finalize();
     
     return 0;
 }
