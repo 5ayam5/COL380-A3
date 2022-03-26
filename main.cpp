@@ -51,7 +51,7 @@ dataQueue maxToMinOrViceVersaHeap(dataQueue dq) {
 float **vect;
 vector<vector<float>> users;
 
-void SearchLayer(vector<float> q, int k, vector<uint32_t> indptr, vector<int32_t> index, vector<uint32_t> level_offset, int currLevel, unordered_set<int> &visited, dataQueue &candidates) {
+void SearchLayer(vector<float> &q, int k, vector<uint32_t> &indptr, vector<int32_t> &index, vector<uint32_t> &level_offset, int currLevel, unordered_set<int> &visited, dataQueue &candidates) {
     dataQueue newCandidates = maxToMinOrViceVersaHeap(candidates);
     while(newCandidates.size() > 0) {
         int curr = -newCandidates.top().first;
@@ -72,7 +72,7 @@ void SearchLayer(vector<float> q, int k, vector<uint32_t> indptr, vector<int32_t
     }
 }
 
-dataQueue queryHNSW(vector<float> q, int top_k, int ep, vector<uint32_t> indptr, vector<int32_t> index, vector<uint32_t> level_offset, int max_level){
+dataQueue queryHNSW(vector<float> &q, int top_k, int ep, vector<uint32_t> &indptr, vector<int32_t> &index, vector<uint32_t> &level_offset, int max_level){
     dataQueue candidates;
     candidates.push(make_pair(ep, cosine_dist(q, vect[ep])));
     unordered_set<int> visited;
@@ -108,8 +108,8 @@ int main(int argc, char *argv[]){
     string user = argv[3];
     string out_file = argv[4];
 
-    int rank, size; 
-    MPI_Init(NULL,NULL);
+    int rank, size;
+    MPI_Init_thread(NULL, NULL, MPI_THREAD_MULTIPLE, &rank);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
 
@@ -192,6 +192,11 @@ int main(int argc, char *argv[]){
     int user_start_indices[size + 1], user_sizes[size];
     num_threads[rank] = omp_get_max_threads();
     MPI_Allgather(&num_threads[rank], 1, MPI_INT, num_threads, 1, MPI_INT, MPI_COMM_WORLD);
+    if (rank == 0) {
+        for (int i = 0; i < size; i++)
+            cout << num_threads[i] << ' ';
+        cout << endl;
+    }
 
     int num_threads_total = 0;
     for(int i = 0;i<size;i++){
