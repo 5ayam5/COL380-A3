@@ -16,8 +16,7 @@ struct Compare{
 
 using dataQueue = priority_queue<q_elem, vector<q_elem>, Compare>;
 
-double cosine_dist(vector<double> a, vector<double> b){
-    assert(a.size() == b.size());
+double cosine_dist(vector<double> a, double *b){
     int n = a.size();
     double dotProd = 0.0;
     double lenA = 0.0;
@@ -49,7 +48,10 @@ dataQueue maxToMinOrViceVersaHeap(dataQueue dq) {
     return newDq;
 }
 
-void SearchLayer(vector<double> q, int k, vector<uint32_t> indptr, vector<int32_t> index, vector<uint32_t> level_offset, int currLevel, unordered_set<int> &visited, vector<vector<double>> vect, dataQueue &candidates) {
+double **vect;
+vector<vector<double>> users;
+
+void SearchLayer(vector<double> q, int k, vector<uint32_t> indptr, vector<int32_t> index, vector<uint32_t> level_offset, int currLevel, unordered_set<int> &visited, dataQueue &candidates) {
     dataQueue newCandidates = maxToMinOrViceVersaHeap(candidates);
     while(newCandidates.size() > 0) {
         int curr = -newCandidates.top().first;
@@ -70,13 +72,13 @@ void SearchLayer(vector<double> q, int k, vector<uint32_t> indptr, vector<int32_
     }
 }
 
-dataQueue queryHNSW(vector<double> q, int top_k, int ep, vector<uint32_t> indptr, vector<int32_t> index, vector<uint32_t> level_offset, int max_level, vector<vector<double>> vect){
+dataQueue queryHNSW(vector<double> q, int top_k, int ep, vector<uint32_t> indptr, vector<int32_t> index, vector<uint32_t> level_offset, int max_level){
     dataQueue candidates;
     candidates.push(make_pair(ep, cosine_dist(q, vect[ep])));
     unordered_set<int> visited;
     visited.insert(ep);
     for(int i = max_level;i>=0;i--) {
-        SearchLayer(q, top_k, indptr, index, level_offset, i, visited, vect, candidates);
+        SearchLayer(q, top_k, indptr, index, level_offset, i, visited, candidates);
     }
     return candidates;
 }
@@ -151,15 +153,14 @@ int main(int argc, char *argv[]){
     cout << "level_offset read" << endl;
 
     ifstream vect_file = open_file(data_dir + "/vect");
-    vector<vector<double>> vect;
-    while (vect_file.peek() != EOF) {
-        vector<double> items;
+    vect = new double*[l];
+    for(int i = 0; i < l; i++) {
+        vect[i] = new double[d];
+    }
+    for (int j = 0; j < l; j++) {
         for (int i = 0; i < d; i++) {
-            double dbl;
-            read_val<double, 8>(&dbl, vect_file);
-            items.push_back(dbl);
+            read_val<double, 8>(&vect[j][i], vect_file);
         }
-        vect.push_back(items);
     }
     vect_file.close();
     cout << "vect read" << endl;
@@ -169,13 +170,18 @@ int main(int argc, char *argv[]){
         cout << "Could not open file" << endl;
         exit(1);
     }
-    vector<vector<double>> users;
     while (user_file.peek() != EOF) {
         vector<double> items;
         for (int i = 0; i < d; i++) {
+            if (user_file.peek() == EOF) {
+                break;
+            }
             double dbl;
             user_file >> dbl;
             items.push_back(dbl);
+        }
+        if (items.size() < d) {
+            break;
         }
         users.push_back(items);
     }
@@ -214,9 +220,9 @@ int main(int argc, char *argv[]){
 
     int startNode = user_start_indices[rank] / (sizeof(q_elem) * top_k);
     int endNode = user_start_indices[rank+1] / (sizeof(q_elem) * top_k);
-    #pragma omp parallel for
+    #pragma omp parallel for shared(users, top_k, ep, indptr, index, level_offset, max_level, l, d, vect, output, startNode, endNode)
         for (int i=startNode; i < endNode; i++) {
-            dataQueue candidates = queryHNSW(users[i], top_k, ep, indptr, index, level_offset, max_level, vect);
+            dataQueue candidates = queryHNSW(users[i], top_k, ep, indptr, index, level_offset, max_level);
             int j = 0;
             while (!candidates.empty()) {
                 output[i][j++] = make_pair(candidates.top().first,candidates.top().second);
