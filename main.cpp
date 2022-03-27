@@ -124,7 +124,7 @@ int main(int argc, char *argv[]){
     read_val<uint32_t, 4>(&l, params_file);
     read_val<uint32_t, 4>(&d, params_file);
     params_file.close();
-    cout << "ep: " << ep << ' ' << "max_level: " << max_level << ' ' << "l: " << l << ' ' << "d: " << d << endl;
+    cout << "ep: " << ep << ' ' << "max_level: " << max_level << ' ' << "ind_len: " << ind_len << ' ' << "l: " << l << ' ' << "d: " << d << endl;
 
     indptr = new uint32_t[l + 1];
     ifstream indptr_file = open_file(data_dir + "/indptr");
@@ -188,7 +188,7 @@ int main(int argc, char *argv[]){
 
     int num_threads[size];
     int user_start_indices[size + 1], user_sizes[size];
-    num_threads[rank] = omp_get_max_threads();
+    int my_threads = num_threads[rank] = omp_get_num_procs();
     MPI_Allgather(&num_threads[rank], 1, MPI_INT, num_threads, 1, MPI_INT, MPI_COMM_WORLD);
     if (rank == 0) {
         for (int i = 0; i < size; i++)
@@ -223,7 +223,7 @@ int main(int argc, char *argv[]){
 
     int startNode = user_start_indices[rank] / (sizeof(q_elem) * top_k);
     int endNode = user_start_indices[rank+1] / (sizeof(q_elem) * top_k);
-    #pragma omp parallel for shared(users, top_k, ep, indptr, indices, level_offset, max_level, l, d, vect, output, startNode, endNode)
+    #pragma omp parallel for num_threads(my_threads) shared(users, top_k, ep, indptr, indices, level_offset, max_level, l, d, vect, output, startNode, endNode)
         for (int i=startNode; i < endNode; i++) {
             dataQueue candidates = queryHNSW(users[i], top_k, ep, level_offset, max_level);
             int j = 0;
