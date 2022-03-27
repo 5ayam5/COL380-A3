@@ -32,11 +32,6 @@ float cosine_dist(vector<float> a, float *b){
     return dotProd;
 }
 
-void trim(dataQueue &dq, int limit){
-    while (dq.size() > limit)
-        dq.pop();
-}
-
 dataQueue maxToMinOrViceVersaHeap(dataQueue dq) {
     vector<q_elem> v;
     dataQueue newDq;
@@ -68,8 +63,11 @@ void SearchLayer(vector<float> &q, int k, vector<uint32_t> &level_offset, int cu
             }
             visited.insert(currIdx);
             float currDist = cosine_dist(q, vect[currIdx]);
+            if (currDist > candidates.top().second && candidates.size() == k)
+                continue;
             candidates.push(make_pair(currIdx, currDist));
-            trim(candidates, k);
+            if (candidates.size() > k)
+                candidates.pop();
             newCandidates.push(make_pair(-currIdx, -currDist));
         }
     }
