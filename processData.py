@@ -14,7 +14,9 @@ if __name__ == "__main__":
 
   with open(path.join(out_dir, "index"), "w+b") as index:
     with open(path.join(in_dir, "index.txt"), "r") as inf:
-      index.writelines(list(map(lambda x: int(x).to_bytes(4, 'little', signed=True), inf.readlines())))
+      lines = inf.readlines()
+      param_file.write(len(lines).to_bytes(4, 'little'))
+      index.writelines(list(map(lambda x: int(x).to_bytes(4, 'little', signed=True), lines)))
 
   with open(path.join(out_dir, "indptr"), "w+b") as indptr:
     with open(path.join(in_dir, "indptr.txt"), "r") as inf:
